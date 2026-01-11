@@ -1,4 +1,5 @@
-from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from datetime import datetime
 import json
 import os
@@ -6,7 +7,7 @@ import os
 TOKEN = os.getenv("BOT_TOKEN")
 DATA_FILE = "data.json"
 
-pending_reset = False  # флаг подтверждения
+pending_reset = False
 
 def load_data():
     if not os.path.exists(DATA_FILE):
@@ -18,18 +19,17 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def money_handler(update, context):
+async def money_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global pending_reset
     text = update.message.text.replace(" ", "")
 
-    # подтверждение сброса
     if pending_reset and text == "RESET":
         save_data([])
         pending_reset = False
-        update.message.reply_text("❌ Все записи удалены")
+        await update.message.reply_text("❌ Все записи удалены")
         return
 
-    pending_reset = False  # любое другое сообщение сбрасывает ожидание
+    pending_reset = False
 
     if not (text.startswith("+") or text.startswith("-")):
         return
@@ -50,38 +50,36 @@ def money_handler(update, context):
     total = sum(item["amount"] for item in data)
     sign = "➕" if amount > 0 else "➖"
 
-    update.message.reply_text(
-        f"{sign} Записано: {amount}\n"
-        f"💰 Общая сумма: {total}"
+    await update.message.reply_text(
+        f"{sign} Записано: {amount}\n💰 Общая сумма: {total}"
     )
 
-def sum_command(update, context):
+async def sum_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     total = sum(item["amount"] for item in data)
-    update.message.reply_text(f"💰 Общая сумма: {total}")
+    await update.message.reply_text(f"💰 Общая сумма: {total}")
 
-def list_command(update, context):
+async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     if not data:
-        update.message.reply_text("Записей пока нет")
+        await update.message.reply_text("Записей пока нет")
         return
 
     text = "📄 История:\n"
     for item in data:
         text += f'{item["date"]} — {item["user"]}: {item["amount"]}\n'
 
-    update.message.reply_text(text)
+    await update.message.reply_text(text)
 
-def reset_command(update, context):
+async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global pending_reset
     pending_reset = True
-    update.message.reply_text(
-        "⚠️ Вы уверены, что хотите удалить ВСЕ записи?\n"
-        "Напишите: RESET"
+    await update.message.reply_text(
+        "⚠️ Вы уверены, что хотите удалить ВСЕ записи?\nНапишите: RESET"
     )
 
-def start(update, context):
-    update.message.reply_text(
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
         "Привет! 👋\n\n"
         "➕ +СУММА — добавить\n"
         "➖ -СУММА — вычесть\n\n"
@@ -91,17 +89,15 @@ def start(update, context):
     )
 
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("sum", sum_command))
-    dp.add_handler(CommandHandler("list", list_command))
-    dp.add_handler(CommandHandler("reset", reset_command))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, money_handler))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("sum", sum_command))
+    app.add_handler(CommandHandler("list", list_command))
+    app.add_handler(CommandHandler("reset", reset_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, money_handler))
 
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
